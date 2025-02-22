@@ -34,10 +34,10 @@ std::vector<std::string> split_cmd(std::string cmd)
 
 static void recursive_print(MyFs &myfs, std::string path, std::string prefix = "")
 {
-	MyFs::dir_list dlist = myfs.list_dir(path);
+	MyFs::INodeList dlist = myfs.list_dir(path);
 	for (size_t i = 0; i < dlist.size(); i++)
 	{
-		MyFs::dir_list_entry &curr_entry = dlist[i];
+		MyFs::INodeEntry &curr_entry = dlist[i];
 
 		std::string entry_prefix = prefix;
 		if (i == dlist.size() - 1)
@@ -47,7 +47,7 @@ static void recursive_print(MyFs &myfs, std::string path, std::string prefix = "
 
 		std::cout << entry_prefix << curr_entry.name << std::endl;
 
-		if (curr_entry.is_dir)
+		if (curr_entry.isDir)
 		{
 			std::string dir_prefix = prefix;
 
@@ -91,7 +91,7 @@ int main(int argc, char **argv)
 
 			if (cmd[0] == LIST_CMD)
 			{
-				MyFs::dir_list dlist;
+				MyFs::INodeList dlist;
 				if (cmd.size() == 1)
 					dlist = myfs.list_dir("/");
 				else if (cmd.size() == 2)
@@ -102,9 +102,9 @@ int main(int argc, char **argv)
 				for (size_t i = 0; i < dlist.size(); i++)
 				{
 					std::cout << std::setw(15) << std::left
-							  << dlist[i].name + (dlist[i].is_dir ? "/" : "")
+							  << std::string(dlist[i].name) + (dlist[i].isDir ? "/" : "")
 							  << std::setw(10) << std::right
-							  << dlist[i].file_size << std::endl;
+							  << dlist[i].fileSize << std::endl;
 				}
 			}
 			else if (cmd[0] == EXIT_CMD)
@@ -165,7 +165,7 @@ int main(int argc, char **argv)
 				std::cout << "unknown command: " << cmd[0] << std::endl;
 			}
 		}
-		catch (std::runtime_error &e)
+		catch (std::exception &e)
 		{
 			std::cout << e.what() << std::endl;
 		}

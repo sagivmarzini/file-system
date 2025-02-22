@@ -6,7 +6,9 @@
 #include <stdint.h>
 #include "blkdev.h"
 
-#define BLOCK_SIZE 40
+#define FILE_NAME_LEN 10
+
+#define BLOCK_SIZE sizeof(MyFs::dir_list_entry)
 
 class MyFs
 {
@@ -17,20 +19,26 @@ public:
 	 * dir_list_entry struct
 	 * This struct is used by list_dir method to return directory entry
 	 * information.
-	 * SIZE: 40 BYTES
 	 */
-	struct dir_list_entry
+	struct INodeEntry
 	{
-		// The directory entry name
-		std::string name;
+		// Index of the INode
+		int index;
 
-		// whether the entry is a file or a directory
-		bool is_dir;
+		// The directory entry name
+		// std::string name;
+		char name[FILE_NAME_LEN];
+
+		// Whether the entry is a file or a directory
+		bool isDir;
 
 		// File size
-		int file_size;
+		int fileSize;
+
+		// Where the content is located
+		int contentAddress;
 	};
-	typedef std::vector<struct dir_list_entry> dir_list;
+	typedef std::vector<struct INodeEntry> INodeList;
 
 	/**
 	 * format method
@@ -43,9 +51,9 @@ public:
 	 * create_file method
 	 * Creates a new file in the required path.
 	 * @param path_str the file path (e.g. "/newfile")
-	 * @param directory boolean indicating whether this is a file or directory
+	 * @param isDiretory boolean indicating whether this is a file or directory
 	 */
-	void create_file(std::string path_str, bool directory);
+	void create_file(const std::string &path_str, bool isDiretory);
 
 	/**
 	 * get_content method
@@ -55,7 +63,7 @@ public:
 	 * @param path_str the file path (e.g. "/somefile")
 	 * @return the content of the file
 	 */
-	std::string get_content(std::string path_str);
+	std::string get_content(const std::string &path_str);
 
 	/**
 	 * set_content method
@@ -65,7 +73,7 @@ public:
 	 * @param path_str the file path (e.g. "/somefile")
 	 * @param content the file content string
 	 */
-	void set_content(std::string path_str, std::string content);
+	void set_content(const std::string &path_str, const std::string &content);
 
 	/**
 	 * list_dir method
@@ -76,9 +84,8 @@ public:
 	 * @return a vector of dir_list_entry structures, one for each file in
 	 *	the directory.
 	 */
-	dir_list list_dir(std::string path_str);
+	INodeList list_dir(const std::string &path_str);
 
-private:
 	/**
 	 * This struct represents the first bytes of a myfs filesystem.
 	 * It holds some magic characters and a number indicating the version.
@@ -86,7 +93,6 @@ private:
 	 * they both exist than the file is assumed to contain a valid myfs
 	 * instance. Otherwise, the blockdevice is formated and a new instance is
 	 * created.
-	 * SIZE: 5 BYTES
 	 */
 	struct myfs_header
 	{
@@ -94,12 +100,19 @@ private:
 		uint8_t version;
 	};
 
-	BlockDeviceSimulator *blockDeviceSim;
+private:
+	BlockDeviceSimulator *_blockDeviceSim;
 
 	static const uint8_t CURR_VERSION = 0x03;
 	static const char *MYFS_MAGIC;
 
-	char _freeBlockBitmap[BLOCK_SIZE] = {0};
+	int _lastINodeIndex;
+	int _lastFileAddress;
+
+	void updateIndexTable() const;
+	void readIndexTable();
+	INodeEntry getINodeAtIndex(const int index) const;
+	INodeEntry getINodeByName(const std::string &path_str) const;
 };
 
 #endif // __MYFS_H__
