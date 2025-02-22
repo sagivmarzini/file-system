@@ -76,8 +76,10 @@ std::string MyFs::get_content(const std::string &path_str)
 {
 	INodeEntry iNode = getINodeByName(path_str);
 
-	char buffer[iNode.fileSize] = {0};
-	_blockDeviceSim->read(iNode.contentAddress, iNode.fileSize, buffer);
+	std::vector<char> buffer(iNode.fileSize + 1, 0);
+	_blockDeviceSim->read(iNode.contentAddress, iNode.fileSize, buffer.data());
+
+	return std::string(buffer.data());
 }
 
 void MyFs::set_content(const std::string &path_str, const std::string &content)
