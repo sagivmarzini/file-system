@@ -49,10 +49,9 @@ private:
 
 	int _lastFileAddress;
 
-	void writeIndexTable() const;
-	void readIndexTable();
+	void updateIndexTable() const;
 	void writeINodeBitmap() const;
-	void readINodeBitmap();
+	void readIndexTable();
 	INodeEntry getINodeAtIndex(const int index) const;
 	INodeEntry getINodeByName(const std::string &path_str) const;
 	// Returns the absolute address of the iNode in the given index

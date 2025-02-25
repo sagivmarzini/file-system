@@ -10,7 +10,6 @@ MyFs::MyFs(BlockDeviceSimulator *blkdevsim_)
 	: _blockDeviceSim(blkdevsim_)
 {
 	readIndexTable();
-	readINodeBitmap();
 
 	struct myfs_header header;
 	_blockDeviceSim->read(0, sizeof(header), (char *)&header);
@@ -38,7 +37,7 @@ void MyFs::format()
 
 	_lastFileAddress = FILES_START;
 
-	writeIndexTable();
+	updateIndexTable();
 }
 
 void MyFs::create_file(const std::string &path_str, bool isDirectory)
@@ -64,7 +63,7 @@ void MyFs::create_file(const std::string &path_str, bool isDirectory)
 	_iNodeBitmap[iNodeIndex] = 1;
 	writeINodeBitmap();
 
-	writeIndexTable();
+	updateIndexTable();
 }
 
 std::string MyFs::get_content(const std::string &path_str)
@@ -158,31 +157,14 @@ void MyFs::rename_file(const std::string &path_str, const std::string &new_str)
 	_blockDeviceSim->write(getINodeAddress(iNode.index), sizeof(iNode), reinterpret_cast<char *>(&iNode));
 }
 
-void MyFs::writeIndexTable() const
+void MyFs::updateIndexTable() const
 {
 	_blockDeviceSim->write(INDEX_TABLE_START, sizeof(_lastFileAddress), reinterpret_cast<char *>(_lastFileAddress));
 }
 
 void MyFs::writeINodeBitmap() const
 {
-	// Uncomment to see the bitmap
-
-	// for (size_t i = 0; i < MAX_FILES; i++)
-	// {
-	// 	if (i % 100 == 0)
-	// 		std::cout << '\n';
-
-	// 	std::cout << (_iNodeBitmap[i] == 1 ? '1' : '0');
-	// }
-
-	// std::cout << '\n';
-
 	_blockDeviceSim->write(BITMAP_START, MAX_FILES, _iNodeBitmap);
-}
-
-void MyFs::readINodeBitmap()
-{
-	_blockDeviceSim->read(BITMAP_START, MAX_FILES, _iNodeBitmap);
 }
 
 void MyFs::readIndexTable()
