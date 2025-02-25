@@ -15,8 +15,7 @@ MyFs::MyFs(BlockDeviceSimulator *blkdevsim_)
 	struct myfs_header header;
 	_blockDeviceSim->read(0, sizeof(header), (char *)&header);
 
-	if (strncmp(header.magic, MYFS_MAGIC, sizeof(header.magic)) != 0 ||
-		(header.version != CURR_VERSION))
+	if (std::string(header.magic) != MYFS_MAGIC || header.version != CURR_VERSION)
 	{
 		std::cout << "Did not find myfs instance on blkdev" << std::endl;
 		std::cout << "Creating..." << std::endl;
@@ -30,6 +29,7 @@ void MyFs::format()
 	// Put the header in place
 	struct myfs_header header;
 	strncpy(header.magic, MYFS_MAGIC, sizeof(header.magic));
+	header.magic[sizeof(header.magic) - 1] = '\0'; // Ensure null termination
 	header.version = CURR_VERSION;
 	_blockDeviceSim->write(0, sizeof(header), (const char *)&header);
 
@@ -44,7 +44,7 @@ void MyFs::format()
 void MyFs::create_file(const std::string &path_str, bool isDirectory)
 {
 	if (checkINodeExists(path_str))
-		return;
+		throw std::invalid_argument("File already exists");
 
 	int iNodeIndex = getEmptyINodeSlot();
 
@@ -84,7 +84,13 @@ void MyFs::set_content(const std::string &path_str, const std::string &content)
 	// If the new content is longer, we need to find a new place for it
 	if (content.size() > (size_t)iNode.fileSize)
 	{
+		// Assign a new address for the new content
 		iNode.contentAddress = _lastFileAddress;
+		_lastFileAddress += content.size();
+
+		// Delete the old content
+		std::vector<char> zeros(iNode.fileSize, 0);
+		_blockDeviceSim->write(iNode.contentAddress, iNode.fileSize, zeros.data());
 	}
 
 	// Update the file metadata
@@ -96,8 +102,6 @@ void MyFs::set_content(const std::string &path_str, const std::string &content)
 	// Write back the updated inode entry
 	int inodeAddress = INODE_TABLE_START + (sizeof(INodeEntry) * iNode.index);
 	_blockDeviceSim->write(inodeAddress, sizeof(INodeEntry), reinterpret_cast<char *>(&iNode));
-
-	_lastFileAddress += iNode.fileSize;
 }
 
 MyFs::INodeList MyFs::list_dir(const std::string &path_str)
@@ -140,6 +144,11 @@ void MyFs::remove_file(const std::string &path_str)
 
 void MyFs::rename_file(const std::string &path_str, const std::string &new_str)
 {
+	if (path_str == new_str)
+		throw std::invalid_argument("New name is the same as the current name");
+	if (checkINodeExists(path_str))
+		throw std::invalid_argument("File already exists");
+
 	auto iNode = getINodeByName(path_str);
 
 	memset(iNode.name, 0, sizeof(iNode.name)); // Clear old name
@@ -151,10 +160,7 @@ void MyFs::rename_file(const std::string &path_str, const std::string &new_str)
 
 void MyFs::writeIndexTable() const
 {
-	char data[sizeof(int) * 2] = {0};
-	memcpy(data + sizeof(int), &_lastFileAddress, sizeof(int));
-
-	_blockDeviceSim->write(INDEX_TABLE_START, sizeof(int) * 2, reinterpret_cast<char *>(data));
+	_blockDeviceSim->write(INDEX_TABLE_START, sizeof(_lastFileAddress), reinterpret_cast<char *>(_lastFileAddress));
 }
 
 void MyFs::writeINodeBitmap() const
@@ -181,18 +187,15 @@ void MyFs::readINodeBitmap()
 
 void MyFs::readIndexTable()
 {
-	_blockDeviceSim->read(INDEX_TABLE_START + sizeof(int), sizeof(int), reinterpret_cast<char *>(&_lastFileAddress));
+	_blockDeviceSim->read(INDEX_TABLE_START + sizeof(_lastFileAddress), sizeof(_lastFileAddress), reinterpret_cast<char *>(&_lastFileAddress));
 }
 
 MyFs::INodeEntry MyFs::getINodeAtIndex(const int index) const
 {
 	int offset = getINodeAddress(index);
 
-	char buffer[sizeof(INodeEntry)] = {0};
-	_blockDeviceSim->read(offset, sizeof(INodeEntry), buffer);
-
 	INodeEntry iNode;
-	memcpy(&iNode, buffer, sizeof(INodeEntry));
+	_blockDeviceSim->read(offset, sizeof(INodeEntry), reinterpret_cast<char *>(&iNode));
 
 	return iNode;
 }
@@ -206,7 +209,7 @@ MyFs::INodeEntry MyFs::getINodeByName(const std::string &path_str) const
 
 		INodeEntry iNode = getINodeAtIndex(i);
 
-		if (iNode.name == path_str)
+		if (strncmp(iNode.name, path_str.c_str(), sizeof(iNode.name)) == 0)
 			return iNode;
 	}
 
@@ -224,7 +227,7 @@ bool MyFs::checkINodeExists(const std::string &path_str) const
 	{
 		getINodeByName(path_str);
 	}
-	catch (const std::exception &e)
+	catch (...)
 	{
 		return false;
 	}
