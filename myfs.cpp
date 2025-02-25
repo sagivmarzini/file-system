@@ -4,14 +4,6 @@
 #include <math.h>
 #include <sstream>
 
-constexpr auto MAX_FILES = 1028;
-
-constexpr auto INODE_TABLE_START = sizeof(MyFs::myfs_header);
-
-constexpr auto INDEX_TABLE_START = INODE_TABLE_START + (sizeof(MyFs::INodeEntry) * MAX_FILES);
-
-constexpr auto FILES_START = INDEX_TABLE_START + sizeof(int) * 2;
-
 const char *MyFs::MYFS_MAGIC = "MYFS";
 
 MyFs::MyFs(BlockDeviceSimulator *blkdevsim_)
@@ -40,13 +32,17 @@ void MyFs::format()
 	header.version = CURR_VERSION;
 	_blockDeviceSim->write(0, sizeof(header), (const char *)&header);
 
+	// Format the iNode bitmap
+	_iNodeBitmap[0] = 1; // The header block is taken
+	_iNodeBitmap[1] = 1;
+
 	// Zero out inode table and index table to avoid garbage data
-	char zero_buffer[INDEX_TABLE_START - sizeof(header)] = {0};
-	_blockDeviceSim->write(sizeof(header), sizeof(zero_buffer), zero_buffer);
+	char zeroBuffer[INDEX_TABLE_START - sizeof(header)] = {0};
+	_blockDeviceSim->write(sizeof(header), sizeof(zeroBuffer), zeroBuffer);
 
 	// Zero out index table
-	char zero_index[sizeof(int) * 2] = {0};
-	_blockDeviceSim->write(INDEX_TABLE_START, sizeof(zero_index), zero_index);
+	char zeroIndex[sizeof(int) * 2] = {0};
+	_blockDeviceSim->write(INDEX_TABLE_START, sizeof(zeroIndex), zeroIndex);
 
 	_lastINodeIndex = 0;
 	_lastFileAddress = FILES_START;
@@ -56,6 +52,9 @@ void MyFs::format()
 
 void MyFs::create_file(const std::string &path_str, bool isDirectory)
 {
+	if (checkINodeExists(path_str))
+		return;
+
 	INodeEntry newFile = {
 		_lastINodeIndex++,
 		"",
@@ -117,6 +116,32 @@ MyFs::INodeList MyFs::list_dir(const std::string &path_str)
 	return answer;
 }
 
+void MyFs::remove_file(const std::string &path_str)
+{
+	auto iNode = getINodeByName(path_str);
+
+	int iNodeAddress = getINodeAddress(iNode.index);
+
+	// Zero out the iNode
+	char data[sizeof(iNode)] = {0};
+	_blockDeviceSim->write(iNodeAddress, sizeof(iNode), data);
+
+	// Zero out the file content
+	std::vector<char> buffer(iNode.fileSize, 0);
+	_blockDeviceSim->write(iNode.contentAddress, iNode.fileSize, buffer.data());
+}
+
+void MyFs::rename_file(const std::string &path_str, const std::string &new_str)
+{
+	auto iNode = getINodeByName(path_str);
+
+	memset(iNode.name, 0, sizeof(iNode.name)); // Clear old name
+	strncpy(iNode.name, new_str.c_str(), sizeof(iNode.name) - 1);
+	iNode.name[sizeof(iNode.name) - 1] = '\0';
+
+	_blockDeviceSim->write(getINodeAddress(iNode.index), sizeof(iNode), reinterpret_cast<char *>(&iNode));
+}
+
 void MyFs::updateIndexTable() const
 {
 	char data[sizeof(int) * 2] = {0};
@@ -134,7 +159,7 @@ void MyFs::readIndexTable()
 
 MyFs::INodeEntry MyFs::getINodeAtIndex(const int index) const
 {
-	int offset = INODE_TABLE_START + (index * sizeof(INodeEntry));
+	int offset = getINodeAddress(index);
 
 	char buffer[sizeof(INodeEntry)] = {0};
 	_blockDeviceSim->read(offset, sizeof(INodeEntry), buffer);
@@ -161,4 +186,23 @@ MyFs::INodeEntry MyFs::getINodeByName(const std::string &path_str) const
 		throw std::invalid_argument("File does not exist!");
 
 	return iNode;
+}
+
+int MyFs::getINodeAddress(const int index) const
+{
+	return INODE_TABLE_START + (index * sizeof(INodeEntry));
+}
+
+bool MyFs::checkINodeExists(const std::string &path_str) const
+{
+	try
+	{
+		getINodeByName(path_str);
+	}
+	catch (const std::exception &e)
+	{
+		return false;
+	}
+
+	return true;
 }

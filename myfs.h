@@ -6,15 +6,14 @@
 #include <stdint.h>
 #include "blkdev.h"
 
-#define FILE_NAME_LEN 10
+constexpr auto FILE_NAME_LEN = 10;
+constexpr auto MAX_FILES = 1028;
 
 #define BLOCK_SIZE sizeof(MyFs::dir_list_entry)
 
 class MyFs
 {
 public:
-	MyFs(BlockDeviceSimulator *blkdevsim_);
-
 	/**
 	 * dir_list_entry struct
 	 * This struct is used by list_dir method to return directory entry
@@ -39,6 +38,27 @@ public:
 		int contentAddress;
 	};
 	typedef std::vector<struct INodeEntry> INodeList;
+
+private:
+	BlockDeviceSimulator *_blockDeviceSim;
+
+	static const uint8_t CURR_VERSION = 0x03;
+	static const char *MYFS_MAGIC;
+
+	char _iNodeBitmap[MAX_FILES] = {0};
+
+	int _lastINodeIndex;
+	int _lastFileAddress;
+
+	void updateIndexTable() const;
+	void readIndexTable();
+	INodeEntry getINodeAtIndex(const int index) const;
+	INodeEntry getINodeByName(const std::string &path_str) const;
+	int getINodeAddress(const int index) const;
+	bool checkINodeExists(const std::string &path_str) const;
+
+public:
+	MyFs(BlockDeviceSimulator *blkdevsim_);
 
 	/**
 	 * format method
@@ -87,6 +107,22 @@ public:
 	INodeList list_dir(const std::string &path_str);
 
 	/**
+	 * remove_file method
+	 * Removes a file from the required path.
+	 * @param path_str the file path (e.g. "/somefile")
+	 * @param isDiretory boolean indicating whether this is a file or directory
+	 */
+	void remove_file(const std::string &path_str);
+
+	/**
+	 * rename_file method
+	 * Renames a file from the given path to the given path.
+	 * @param path_str the file path (e.g. "/somefile")
+	 * @param isDiretory boolean indicating whether this is a file or directory
+	 */
+	void rename_file(const std::string &path_str, const std::string &new_str);
+
+	/**
 	 * This struct represents the first bytes of a myfs filesystem.
 	 * It holds some magic characters and a number indicating the version.
 	 * Upon class construction, the magic and the header are tested - if
@@ -100,19 +136,10 @@ public:
 		uint8_t version;
 	};
 
-private:
-	BlockDeviceSimulator *_blockDeviceSim;
-
-	static const uint8_t CURR_VERSION = 0x03;
-	static const char *MYFS_MAGIC;
-
-	int _lastINodeIndex;
-	int _lastFileAddress;
-
-	void updateIndexTable() const;
-	void readIndexTable();
-	INodeEntry getINodeAtIndex(const int index) const;
-	INodeEntry getINodeByName(const std::string &path_str) const;
+	static constexpr auto BITMAP_START = sizeof(myfs_header);
+	static constexpr auto INODE_TABLE_START = BITMAP_START + sizeof(_iNodeBitmap);
+	static constexpr auto INDEX_TABLE_START = INODE_TABLE_START + (sizeof(MyFs::INodeEntry) * MAX_FILES);
+	static constexpr auto FILES_START = INDEX_TABLE_START + sizeof(_lastINodeIndex) + sizeof(_lastFileAddress);
 };
 
 #endif // __MYFS_H__

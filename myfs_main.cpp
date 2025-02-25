@@ -17,9 +17,19 @@ const std::string EDIT_CMD = "edit";
 const std::string TREE_CMD = "tree";
 const std::string HELP_CMD = "help";
 const std::string EXIT_CMD = "exit";
+const std::string REMOVE_CMD = "rm";
+const std::string MOVE_CMD = "mv";
 
-const std::string HELP_STRING = "The following commands are supported: \n" + LIST_CMD + " [<directory>] - list directory content. \n" + CONTENT_CMD + " <path> - show file content. \n" + CREATE_FILE_CMD + " <path> - create empty file. \n" + CREATE_DIR_CMD + " <path> - create empty directory. \n" + EDIT_CMD + " <path> - re-set file content. \n" + HELP_CMD + " - show this help messege. \n" + EXIT_CMD + " - gracefully exit. \n";
-
+const std::string HELP_STRING = "The following commands are supported: \n" +
+								LIST_CMD + " [<directory>] - list directory content. \n" +
+								CONTENT_CMD + " <path> - show file content. \n" +
+								CREATE_FILE_CMD + " <path> - create empty file. \n" +
+								CREATE_DIR_CMD + " <path> - create empty directory. \n" +
+								EDIT_CMD + " <path> - re-set file content. \n" +
+								REMOVE_CMD + " <path> - remove file or directory. \n" +
+								MOVE_CMD + " <source> <destination> - move/rename file or directory. \n" +
+								HELP_CMD + " - show this help message. \n" +
+								EXIT_CMD + " - gracefully exit. \n";
 std::vector<std::string> split_cmd(std::string cmd)
 {
 	std::stringstream ss(cmd);
@@ -159,6 +169,20 @@ int main(int argc, char **argv)
 					myfs.create_file(cmd[1], true);
 				else
 					std::cout << CREATE_DIR_CMD << ": one argument requested" << std::endl;
+			}
+			else if (cmd[0] == REMOVE_CMD)
+			{
+				if (cmd.size() == 2)
+					myfs.remove_file(cmd[1]);
+				else
+					std::cout << REMOVE_CMD << ": file or directory path requested" << std::endl;
+			}
+			else if (cmd[0] == MOVE_CMD)
+			{
+				if (cmd.size() == 3)
+					myfs.rename_file(cmd[1], cmd[2]);
+				else
+					std::cout << MOVE_CMD << ": source and destination paths requested" << std::endl;
 			}
 			else
 			{
