@@ -32,19 +32,9 @@ void MyFs::format()
 	header.version = CURR_VERSION;
 	_blockDeviceSim->write(0, sizeof(header), (const char *)&header);
 
-	// Format the iNode bitmap
-	_iNodeBitmap[0] = 1; // The header block is taken
-	_iNodeBitmap[1] = 1;
+	std::vector<char> zeroBuffer(FILES_START - BITMAP_START, 0);
+	_blockDeviceSim->write(BITMAP_START, zeroBuffer.size(), zeroBuffer.data());
 
-	// Zero out inode table and index table to avoid garbage data
-	char zeroBuffer[INDEX_TABLE_START - sizeof(header)] = {0};
-	_blockDeviceSim->write(sizeof(header), sizeof(zeroBuffer), zeroBuffer);
-
-	// Zero out index table
-	char zeroIndex[sizeof(int) * 2] = {0};
-	_blockDeviceSim->write(INDEX_TABLE_START, sizeof(zeroIndex), zeroIndex);
-
-	_lastINodeIndex = 0;
 	_lastFileAddress = FILES_START;
 
 	updateIndexTable();
@@ -55,8 +45,10 @@ void MyFs::create_file(const std::string &path_str, bool isDirectory)
 	if (checkINodeExists(path_str))
 		return;
 
+	int iNodeIndex = getEmptyINodeSlot();
+
 	INodeEntry newFile = {
-		_lastINodeIndex++,
+		iNodeIndex,
 		"",
 		isDirectory,
 		0,
@@ -67,6 +59,9 @@ void MyFs::create_file(const std::string &path_str, bool isDirectory)
 
 	int address = INODE_TABLE_START + (sizeof(INodeEntry) * newFile.index);
 	_blockDeviceSim->write(address, sizeof(newFile), reinterpret_cast<char *>(&newFile));
+
+	_iNodeBitmap[iNodeIndex] = 1;
+	writeINodeBitmap();
 
 	updateIndexTable();
 }
@@ -85,9 +80,14 @@ void MyFs::set_content(const std::string &path_str, const std::string &content)
 {
 	INodeEntry iNode = getINodeByName(path_str);
 
+	// If the new content is longer, we need to find a new place for it
+	if (content.size() > (size_t)iNode.fileSize)
+	{
+		iNode.contentAddress = _lastFileAddress;
+	}
+
 	// Update the file metadata
 	iNode.fileSize = content.size();
-	iNode.contentAddress = _lastFileAddress;
 
 	// Write the file content
 	_blockDeviceSim->write(iNode.contentAddress, iNode.fileSize, content.c_str());
@@ -103,8 +103,11 @@ MyFs::INodeList MyFs::list_dir(const std::string &path_str)
 {
 	INodeList answer;
 
-	for (size_t i = 0; i < (size_t)_lastINodeIndex; ++i)
+	for (size_t i = 0; i < MAX_FILES; ++i)
 	{
+		if (!_iNodeBitmap[i])
+			continue;
+
 		INodeEntry iNode = getINodeAtIndex(i);
 
 		if (iNode.name[0] == '\0')
@@ -129,6 +132,9 @@ void MyFs::remove_file(const std::string &path_str)
 	// Zero out the file content
 	std::vector<char> buffer(iNode.fileSize, 0);
 	_blockDeviceSim->write(iNode.contentAddress, iNode.fileSize, buffer.data());
+
+	_iNodeBitmap[iNode.index] = 0;
+	writeINodeBitmap();
 }
 
 void MyFs::rename_file(const std::string &path_str, const std::string &new_str)
@@ -145,15 +151,18 @@ void MyFs::rename_file(const std::string &path_str, const std::string &new_str)
 void MyFs::updateIndexTable() const
 {
 	char data[sizeof(int) * 2] = {0};
-	memcpy(data, &_lastINodeIndex, sizeof(int));
 	memcpy(data + sizeof(int), &_lastFileAddress, sizeof(int));
 
 	_blockDeviceSim->write(INDEX_TABLE_START, sizeof(int) * 2, reinterpret_cast<char *>(data));
 }
 
+void MyFs::writeINodeBitmap() const
+{
+	_blockDeviceSim->write(BITMAP_START, MAX_FILES, _iNodeBitmap);
+}
+
 void MyFs::readIndexTable()
 {
-	_blockDeviceSim->read(INDEX_TABLE_START, sizeof(int), reinterpret_cast<char *>(&_lastINodeIndex));
 	_blockDeviceSim->read(INDEX_TABLE_START + sizeof(int), sizeof(int), reinterpret_cast<char *>(&_lastFileAddress));
 }
 
@@ -172,20 +181,18 @@ MyFs::INodeEntry MyFs::getINodeAtIndex(const int index) const
 
 MyFs::INodeEntry MyFs::getINodeByName(const std::string &path_str) const
 {
-	INodeEntry iNode;
-
-	for (size_t i = 0; i < (size_t)_lastINodeIndex; i++)
+	for (size_t i = 0; i < MAX_FILES; i++)
 	{
-		iNode = getINodeAtIndex(i);
+		if (!_iNodeBitmap[i])
+			continue;
+
+		INodeEntry iNode = getINodeAtIndex(i);
 
 		if (iNode.name == path_str)
-			break;
+			return iNode;
 	}
 
-	if (iNode.name != path_str)
-		throw std::invalid_argument("File does not exist!");
-
-	return iNode;
+	throw std::invalid_argument("File does not exist!");
 }
 
 int MyFs::getINodeAddress(const int index) const
@@ -205,4 +212,15 @@ bool MyFs::checkINodeExists(const std::string &path_str) const
 	}
 
 	return true;
+}
+
+int MyFs::getEmptyINodeSlot() const
+{
+	for (size_t i = 0; i < MAX_FILES; i++)
+	{
+		if (!_iNodeBitmap[i])
+			return i;
+	}
+
+	throw std::runtime_error("File system is full.");
 }

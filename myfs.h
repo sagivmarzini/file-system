@@ -47,15 +47,17 @@ private:
 
 	char _iNodeBitmap[MAX_FILES] = {0};
 
-	int _lastINodeIndex;
 	int _lastFileAddress;
 
 	void updateIndexTable() const;
+	void writeINodeBitmap() const;
 	void readIndexTable();
 	INodeEntry getINodeAtIndex(const int index) const;
 	INodeEntry getINodeByName(const std::string &path_str) const;
+	// Returns the absolute address of the iNode in the given index
 	int getINodeAddress(const int index) const;
 	bool checkINodeExists(const std::string &path_str) const;
+	int getEmptyINodeSlot() const;
 
 public:
 	MyFs(BlockDeviceSimulator *blkdevsim_);
@@ -139,7 +141,7 @@ public:
 	static constexpr auto BITMAP_START = sizeof(myfs_header);
 	static constexpr auto INODE_TABLE_START = BITMAP_START + sizeof(_iNodeBitmap);
 	static constexpr auto INDEX_TABLE_START = INODE_TABLE_START + (sizeof(MyFs::INodeEntry) * MAX_FILES);
-	static constexpr auto FILES_START = INDEX_TABLE_START + sizeof(_lastINodeIndex) + sizeof(_lastFileAddress);
+	static constexpr auto FILES_START = INDEX_TABLE_START + sizeof(_lastFileAddress);
 };
 
 #endif // __MYFS_H__
